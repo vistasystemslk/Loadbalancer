@@ -16,19 +16,30 @@
       background-color: var(--bg); color: var(--text); 
       margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center;
     }
-    .header { width: 100%; max-width: 1000px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .header { width: 100%; max-width: 1000px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     h2 { margin: 0; color: #ffffff; font-weight: 300; letter-spacing: 1px; }
     #sysTime { color: #888; font-size: 0.9rem; font-family: monospace; }
     
+    /* Navigation Bar Styling */
+    .nav-bar { display: flex; gap: 10px; width: 100%; max-width: 1000px; margin-bottom: 20px; background: #111; padding: 10px; border-radius: 8px; box-sizing: border-box;}
+    .nav-btn { flex: 1; padding: 12px; border: none; background: transparent; color: #888; font-size: 1rem; cursor: pointer; border-radius: 6px; transition: 0.3s; font-weight: bold;}
+    .nav-btn:hover { color: #fff; background: #222; }
+    .nav-btn.active { background: var(--ev); color: #000; }
+
+    /* View Controller Styling */
+    .view-section { display: none; width: 100%; max-width: 1000px; animation: fadeIn 0.3s ease-in-out; }
+    .view-section.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
     .status-banner {
       background: var(--card-bg); padding: 15px; border-radius: 8px;
       margin-bottom: 20px; font-weight: bold; font-size: 1.1rem;
       border-left: 5px solid var(--solar); box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-      width: 100%; max-width: 1000px; box-sizing: border-box; text-align: center;
+      width: 100%; box-sizing: border-box; text-align: center;
     }
     .grid {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 15px; width: 100%; max-width: 1000px;
+      gap: 15px; width: 100%;
     }
     .card {
       background: var(--card-bg); padding: 20px; border-radius: 12px;
@@ -47,9 +58,9 @@
     .controls-wrapper { display: flex; flex-direction: column; gap: 12px; margin-top: 15px; }
     select, input { 
       padding: 12px; border-radius: 6px; border: 1px solid #333; 
-      background: #111; color: white; font-size: 1rem;
+      background: #111; color: white; font-size: 1rem; width: 100%; box-sizing: border-box;
     }
-    button { padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+    button.action-btn { padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; width: 100%;}
     .btn-apply { background: var(--ev); color: #000; }
     .btn-apply:hover { background: #27ae60; }
     .btn-reset { background: #333; color: #ccc; font-size: 0.8rem; margin-top: 10px;}
@@ -65,56 +76,101 @@
     <h2>VistaSystems <span style="font-weight:bold">DLB CLOUD</span></h2>
     <div id="sysTime">Connecting to HiveMQ...</div>
   </div>
+
+  <div class="nav-bar">
+    <button class="nav-btn active" onclick="switchTab('tab-dashboard', this)">Dashboard</button>
+    <button class="nav-btn" onclick="switchTab('tab-settings', this)">Charge Settings</button>
+    <button class="nav-btn" onclick="switchTab('tab-system', this)">System Status</button>
+  </div>
   
-  <div class="status-banner" id="statusBanner">Initializing MQTT Stream...</div>
-
-  <div class="grid">
-    <div class="card" style="border-bottom: 3px solid var(--solar);">
-      <h3>Solar Generation</h3>
-      <div class="value solar-color"><span id="solarKw">0.00</span><span class="unit"> kW</span></div>
-    </div>
-
-    <div class="card" style="border-bottom: 3px solid var(--actual);">
-      <h3>EV Actual Draw</h3>
-      <div class="value actual-color"><span id="evActual">0.00</span><span class="unit"> A</span></div>
-      <div style="color:var(--ev); font-size:0.9rem;">Target: <span id="evTarget">0.00</span> A</div>
-    </div>
-
-    <div class="card" style="border-bottom: 3px solid var(--kwh);">
-      <h3>Energy Delivered</h3>
-      <div class="value kwh-color"><span id="evKwh">0.000</span><span class="unit"> kWh</span></div>
-      <button class="btn-reset" onclick="sendCommand('RESET_KWH')">Reset Counter</button>
-    </div>
-
-    <div class="card" style="grid-column: 1 / -1;">
-      <h3>Live Power History (10s Samples)</h3>
-      <div class="chart-container"><canvas id="powerChart"></canvas></div>
-    </div>
-
-    <div class="card" style="grid-column: 1 / -1;">
-      <h3>Smart Charge Control</h3>
-      <div class="controls-wrapper">
-        <select id="limitMode" onchange="toggleInputs()">
-          <option value="0">Continuous (Solar Surplus)</option>
-          <option value="1">Stop at Target kWh</option>
-          <option value="2">Stop at Target SOC %</option>
-        </select>
-        <div id="inputGroup" style="display:none; gap:10px;">
-          <input type="number" id="val1" placeholder="Value 1" style="flex:1">
-          <input type="number" id="val2" placeholder="Value 2 (SOC only)" style="flex:1; display:none">
-        </div>
-        <button class="btn-apply" onclick="applyLimit()">Update Charge Logic</button>
+  <div id="tab-dashboard" class="view-section active">
+    <div class="status-banner" id="statusBanner">Initializing MQTT Stream...</div>
+    <div class="grid">
+      <div class="card" style="border-bottom: 3px solid var(--solar);">
+        <h3>Solar Generation</h3>
+        <div class="value solar-color"><span id="solarKw">0.00</span><span class="unit"> kW</span></div>
       </div>
-      <div id="limitDisplay" style="margin-top:15px; font-size:0.9rem; color:#888;">Mode: Continuous</div>
+
+      <div class="card" style="border-bottom: 3px solid var(--actual);">
+        <h3>EV Actual Draw</h3>
+        <div class="value actual-color"><span id="evActual">0.00</span><span class="unit"> A</span></div>
+        <div style="color:var(--ev); font-size:0.9rem;">Target: <span id="evTarget">0.00</span> A</div>
+      </div>
+
+      <div class="card" style="border-bottom: 3px solid var(--kwh);">
+        <h3>Energy Delivered</h3>
+        <div class="value kwh-color"><span id="evKwh">0.000</span><span class="unit"> kWh</span></div>
+        <button class="action-btn btn-reset" onclick="sendCommand('RESET_KWH')">Reset Energy Counter</button>
+      </div>
+
+      <div class="card" style="grid-column: 1 / -1;">
+        <h3>Live Power History (10s Samples)</h3>
+        <div class="chart-container"><canvas id="powerChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-settings" class="view-section">
+    <div class="grid">
+      <div class="card" style="grid-column: 1 / -1;">
+        <h3 style="font-size: 1.2rem; color: #fff;">Smart Charge Control</h3>
+        <p style="color:#aaa; font-size:0.9rem;">Automatically halt charging when a specific target is reached.</p>
+        
+        <div class="controls-wrapper">
+          <select id="limitMode" onchange="toggleInputs()">
+            <option value="0">Continuous (Solar Surplus)</option>
+            <option value="1">Stop at Target kWh</option>
+            <option value="2">Stop at Target SOC %</option>
+          </select>
+          
+          <div id="inputGroup" style="display:none; gap:10px; flex-direction: column;">
+            <input type="number" id="val1" placeholder="Value 1">
+            <input type="number" id="val2" placeholder="Value 2 (SOC only)" style="display:none">
+          </div>
+          
+          <button class="action-btn btn-apply" onclick="applyLimit()">Update Charge Logic</button>
+        </div>
+        
+        <div id="limitDisplay" style="margin-top:20px; font-size:1.1rem; color:var(--solar); font-weight: bold;">
+          Current Mode: Continuous
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-system" class="view-section">
+    <div class="grid">
+      <div class="card">
+        <h3>Broker Connection</h3>
+        <div class="value" style="color:var(--ev); font-size: 1.5rem;">Secure TLS</div>
+        <div style="color:#888; font-size:0.9rem;">Port 8884</div>
+      </div>
+      <div class="card">
+        <h3>Hardware Node</h3>
+        <div class="value" style="color:#fff; font-size: 1.5rem;">ESP32</div>
+        <div style="color:#888; font-size:0.9rem;">Firmware v1.2</div>
+      </div>
     </div>
   </div>
 
   <div class="conn-status" id="connStatus"><span class="dot"></span>Cloud Status: Offline</div>
 
   <script>
-    // MQTT CONFIGURATION
+    // --- UI NAVIGATION LOGIC ---
+    function switchTab(tabId, btnElement) {
+      // Hide all views
+      document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+      // Remove active state from all buttons
+      document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+      
+      // Show selected view and highlight button
+      document.getElementById(tabId).classList.add('active');
+      btnElement.classList.add('active');
+    }
+
+    // --- MQTT CONFIGURATION ---
     const broker = "40bbfbeb8fd548a5b4c9d54d2057bda6.s1.eu.hivemq.cloud";
-    const port = 8884; // WebSocket TLS Port
+    const port = 8884; 
     const clientID = "VistaDLB_Web_" + Math.random().toString(16).substr(2, 5);
 
     const client = new Paho.MQTT.Client(broker, port, clientID);
@@ -175,6 +231,7 @@
         }
     }
 
+    // --- SETTINGS CONTROLS ---
     function toggleInputs() {
         const mode = document.getElementById('limitMode').value;
         const group = document.getElementById('inputGroup');
@@ -197,12 +254,27 @@
         const mode = document.getElementById('limitMode').value;
         const v1 = document.getElementById('val1').value;
         const v2 = document.getElementById('val2').value;
-        if (mode == "0") sendCommand("LIMIT:NONE");
-        else if (mode == "1") sendCommand("LIMIT:KWH:" + v1);
-        else if (mode == "2") sendCommand("LIMIT:SOC:" + v1 + ":" + v2);
+        
+        let displayTxt = "Current Mode: Continuous";
+        
+        if (mode == "0") {
+            sendCommand("LIMIT:NONE");
+        } else if (mode == "1") {
+            sendCommand("LIMIT:KWH:" + v1);
+            displayTxt = "Current Mode: Stop at " + v1 + " kWh";
+        } else if (mode == "2") {
+            sendCommand("LIMIT:SOC:" + v1 + ":" + v2);
+            displayTxt = "Current Mode: Stop at " + v2 + "% SOC";
+        }
+        
+        document.getElementById('limitDisplay').innerText = displayTxt;
+        
+        // Clear inputs after applying
+        document.getElementById('val1').value = "";
+        document.getElementById('val2').value = "";
     }
 
-    // Chart Init
+    // --- CHART INIT ---
     const ctx = document.getElementById('powerChart').getContext('2d');
     const powerChart = new Chart(ctx, {
         type: 'line',
