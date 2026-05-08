@@ -135,6 +135,14 @@
           Current Mode: Continuous
         </div>
       </div>
+
+      <!-- NEW CARD: MANUAL OVERRIDE -->
+      <div class="card" style="grid-column: 1 / -1; margin-top: 5px;">
+        <h3 style="font-size: 1.2rem; color: #fff;">Manual Override</h3>
+        <p style="color:#aaa; font-size:0.9rem;">Skip solar balancing and charge at maximum speed.</p>
+        <button id="btnSkipDLB" class="action-btn" style="background: #3498db; color: white;" onclick="toggleSkipDLB()">Enable Max Charge (Skip DLB)</button>
+      </div>
+
     </div>
   </div>
 
@@ -156,14 +164,14 @@
   <div class="conn-status" id="connStatus"><span class="dot"></span>Cloud Status: Offline</div>
 
   <script>
+    // Global state for Skip DLB
+    let skipDlbState = false;
+
     // --- UI NAVIGATION LOGIC ---
     function switchTab(tabId, btnElement) {
-      // Hide all views
       document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-      // Remove active state from all buttons
       document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
       
-      // Show selected view and highlight button
       document.getElementById(tabId).classList.add('active');
       btnElement.classList.add('active');
     }
@@ -206,6 +214,19 @@
         document.getElementById('evTarget').innerText = data.evTarget.toFixed(2);
         document.getElementById('evKwh').innerText = data.evKwh.toFixed(3);
 
+        // Update Skip DLB State and Button
+        skipDlbState = data.skipDLB === true;
+        const btnSkip = document.getElementById('btnSkipDLB');
+        if (btnSkip) {
+            if (skipDlbState) {
+                btnSkip.innerText = "Disable Max Charge (Return to DLB)";
+                btnSkip.style.background = "#e74c3c"; // Alert color
+            } else {
+                btnSkip.innerText = "Enable Max Charge (Skip DLB)";
+                btnSkip.style.background = "#3498db"; // Default color
+            }
+        }
+
         // Update Chart
         powerChart.data.labels.push(data.sysTime);
         powerChart.data.datasets[0].data.push(data.solarKw);
@@ -222,6 +243,9 @@
         if (data.targetReached) {
             banner.innerText = "🛑 CHARGE COMPLETE: Target Reached";
             banner.style.borderLeftColor = "var(--sim)";
+        } else if (data.skipDLB) {
+            banner.innerText = "🚀 OVERRIDE: Charging at Max Capacity (Solar Ignored)";
+            banner.style.borderLeftColor = "var(--alert)";
         } else if (data.evTarget > 0) {
             banner.innerText = "⚡ CHARGING: Balancing with Solar Surplus";
             banner.style.borderLeftColor = "var(--ev)";
@@ -272,6 +296,15 @@
         // Clear inputs after applying
         document.getElementById('val1').value = "";
         document.getElementById('val2').value = "";
+    }
+
+    // Toggle Override Mode
+    function toggleSkipDLB() {
+        if (skipDlbState) {
+            sendCommand("SKIP_DLB:OFF");
+        } else {
+            sendCommand("SKIP_DLB:ON");
+        }
     }
 
     // --- CHART INIT ---
