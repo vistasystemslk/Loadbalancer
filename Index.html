@@ -1,1 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vista Systems | Cloud DLB Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0f0f0f; --card-bg: #1a1a1a; --text: #e0e0e0;
+      --solar: #f39c12; --ev: #2ecc71; --sim: #9b59b6; --alert: #e74c3c; --wait: #3498db; --actual: #3498db; --kwh: #f1c40f;
+    }
+    body { 
+      font-family: 'Inter', -apple-system, sans-serif; 
+      background-color: var(--bg); color: var(--text); 
+      margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center;
+    }
+    .header { width: 100%; max-width: 1000px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    h2 { margin: 0; color: #ffffff; font-weight: 300; letter-spacing: 1px; }
+    #sysTime { color: #888; font-size: 0.9rem; font-family: monospace; }
+    
+    .status-banner {
+      background: var(--card-bg); padding: 15px; border-radius: 8px;
+      margin-bottom: 20px; font-weight: bold; font-size: 1.1rem;
+      border-left: 5px solid var(--solar); box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      width: 100%; max-width: 1000px; box-sizing: border-box; text-align: center;
+    }
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 15px; width: 100%; max-width: 1000px;
+    }
+    .card {
+      background: var(--card-bg); padding: 20px; border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-align: center;
+    }
+    .card h3 { margin-top: 0; font-size: 0.8rem; color: #777; text-transform: uppercase; letter-spacing: 1px;}
+    .value { font-size: 2.2rem; font-weight: bold; margin: 10px 0; }
+    .unit { font-size: 0.9rem; font-weight: normal; color: #666; }
+    
+    .solar-color { color: var(--solar); }
+    .actual-color { color: var(--actual); }
+    .kwh-color { color: var(--kwh); }
 
+    .chart-container { position: relative; height: 300px; width: 100%; margin-top: 15px; }
+
+    .controls-wrapper { display: flex; flex-direction: column; gap: 12px; margin-top: 15px; }
+    select, input { 
+      padding: 12px; border-radius: 6px; border: 1px solid #333; 
+      background: #111; color: white; font-size: 1rem;
+    }
+    button { padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+    .btn-apply { background: var(--ev); color: #000; }
+    .btn-apply:hover { background: #27ae60; }
+    .btn-reset { background: #333; color: #ccc; font-size: 0.8rem; margin-top: 10px;}
+
+    .conn-status { font-size: 0.8rem; color: #555; margin-top: 20px; }
+    .dot { display: inline-block; width: 8px; height: 8px; background: var(--alert); border-radius: 50%; margin-right: 5px; }
+    .connected .dot { background: var(--ev); box-shadow: 0 0 10px var(--ev); }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2>VistaSystems <span style="font-weight:bold">DLB CLOUD</span></h2>
+    <div id="sysTime">Connecting to HiveMQ...</div>
+  </div>
+  
+  <div class="status-banner" id="statusBanner">Initializing MQTT Stream...</div>
+
+  <div class="grid">
+    <div class="card" style="border-bottom: 3px solid var(--solar);">
+      <h3>Solar Generation</h3>
+      <div class="value solar-color"><span id="solarKw">0.00</span><span class="unit"> kW</span></div>
+    </div>
+
+    <div class="card" style="border-bottom: 3px solid var(--actual);">
+      <h3>EV Actual Draw</h3>
+      <div class="value actual-color"><span id="evActual">0.00</span><span class="unit"> A</span></div>
+      <div style="color:var(--ev); font-size:0.9rem;">Target: <span id="evTarget">0.00</span> A</div>
+    </div>
+
+    <div class="card" style="border-bottom: 3px solid var(--kwh);">
+      <h3>Energy Delivered</h3>
+      <div class="value kwh-color"><span id="evKwh">0.000</span><span class="unit"> kWh</span></div>
+      <button class="btn-reset" onclick="sendCommand('RESET_KWH')">Reset Counter</button>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;">
+      <h3>Live Power History (10s Samples)</h3>
+      <div class="chart-container"><canvas id="powerChart"></canvas></div>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;">
+      <h3>Smart Charge Control</h3>
+      <div class="controls-wrapper">
+        <select id="limitMode" onchange="toggleInputs()">
+          <option value="0">Continuous (Solar Surplus)</option>
+          <option value="1">Stop at Target kWh</option>
+          <option value="2">Stop at Target SOC %</option>
+        </select>
+        <div id="inputGroup" style="display:none; gap:10px;">
+          <input type="number" id="val1" placeholder="Value 1" style="flex:1">
+          <input type="number" id="val2" placeholder="Value 2 (SOC only)" style="flex:1; display:none">
+        </div>
+        <button class="btn-apply" onclick="applyLimit()">Update Charge Logic</button>
+      </div>
+      <div id="limitDisplay" style="margin-top:15px; font-size:0.9rem; color:#888;">Mode: Continuous</div>
+    </div>
+  </div>
+
+  <div class="conn-status" id="connStatus"><span class="dot"></span>Cloud Status: Offline</div>
+
+  <script>
+    // MQTT CONFIGURATION
+    const broker = "40bbfbeb8fd548a5b4c9d54d2057bda6.s1.eu.hivemq.cloud";
+    const port = 8884; // WebSocket TLS Port
+    const clientID = "VistaDLB_Web_" + Math.random().toString(16).substr(2, 5);
+
+    const client = new Paho.MQTT.Client(broker, port, clientID);
+
+    client.onConnectionLost = (resp) => {
+        document.getElementById('connStatus').classList.remove('connected');
+        document.getElementById('connStatus').innerHTML = '<span class="dot"></span>Reconnecting...';
+        setTimeout(mqttConnect, 5000);
+    };
+
+    client.onMessageArrived = (msg) => {
+        const data = JSON.parse(msg.payloadString);
+        updateUI(data);
+    };
+
+    function mqttConnect() {
+        client.connect({
+            useSSL: true,
+            userName: "kasun",
+            password: "kasua1U23",
+            onSuccess: () => {
+                client.subscribe("vista/dlb/status");
+                document.getElementById('connStatus').classList.add('connected');
+                document.getElementById('connStatus').innerText = "Cloud Status: Online";
+            }
+        });
+    }
+
+    function updateUI(data) {
+        document.getElementById('sysTime').innerText = "Last Sync: " + data.sysTime;
+        document.getElementById('solarKw').innerText = data.solarKw.toFixed(2);
+        document.getElementById('evActual').innerText = data.evActual.toFixed(2);
+        document.getElementById('evTarget').innerText = data.evTarget.toFixed(2);
+        document.getElementById('evKwh').innerText = data.evKwh.toFixed(3);
+
+        // Update Chart
+        powerChart.data.labels.push(data.sysTime);
+        powerChart.data.datasets[0].data.push(data.solarKw);
+        powerChart.data.datasets[1].data.push(data.evActual * 0.22); // Approx kW
+        if (powerChart.data.labels.length > 60) { // Keep 10 mins (60 * 10s)
+            powerChart.data.labels.shift();
+            powerChart.data.datasets[0].data.shift();
+            powerChart.data.datasets[1].data.shift();
+        }
+        powerChart.update();
+
+        // Banner Logic
+        const banner = document.getElementById('statusBanner');
+        if (data.targetReached) {
+            banner.innerText = "🛑 CHARGE COMPLETE: Target Reached";
+            banner.style.borderLeftColor = "var(--sim)";
+        } else if (data.evTarget > 0) {
+            banner.innerText = "⚡ CHARGING: Balancing with Solar Surplus";
+            banner.style.borderLeftColor = "var(--ev)";
+        } else {
+            banner.innerText = "☁️ STANDBY: Waiting for Solar Threshold";
+            banner.style.borderLeftColor = "var(--alert)";
+        }
+    }
+
+    function toggleInputs() {
+        const mode = document.getElementById('limitMode').value;
+        const group = document.getElementById('inputGroup');
+        const v1 = document.getElementById('val1');
+        const v2 = document.getElementById('val2');
+        
+        group.style.display = (mode == "0") ? "none" : "flex";
+        v1.placeholder = (mode == "1") ? "Target kWh" : "Current SOC %";
+        v2.style.display = (mode == "2") ? "block" : "none";
+        v2.placeholder = "Target SOC %";
+    }
+
+    function sendCommand(payload) {
+        const message = new Paho.MQTT.Message(payload);
+        message.destinationName = "vista/dlb/cmd";
+        client.send(message);
+    }
+
+    function applyLimit() {
+        const mode = document.getElementById('limitMode').value;
+        const v1 = document.getElementById('val1').value;
+        const v2 = document.getElementById('val2').value;
+        if (mode == "0") sendCommand("LIMIT:NONE");
+        else if (mode == "1") sendCommand("LIMIT:KWH:" + v1);
+        else if (mode == "2") sendCommand("LIMIT:SOC:" + v1 + ":" + v2);
+    }
+
+    // Chart Init
+    const ctx = document.getElementById('powerChart').getContext('2d');
+    const powerChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                { label: 'Solar (kW)', borderColor: '#f39c12', data: [], tension: 0.3, pointRadius: 0, fill: true, backgroundColor: 'rgba(243,156,18,0.05)' },
+                { label: 'EV (kW)', borderColor: '#3498db', data: [], tension: 0.3, pointRadius: 0 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: '#222' } }, x: { grid: { display: false } } } }
+    });
+
+    window.onload = mqttConnect;
+  </script>
+</body>
+</html>
